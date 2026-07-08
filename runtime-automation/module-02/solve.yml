@@ -1,0 +1,78 @@
+---
+# Module 02 Solve: EDB Postgres clusters & replication verification
+# Demonstrates streaming replication between pg-dc1 (primary) and pg-dc2 (standby).
+
+- name: "Step 1: Check pg-dc1 is PRIMARY"
+  ansible.builtin.command:
+    cmd: >
+      ssh -o StrictHostKeyChecking=no rhel@pg-dc1
+      "sudo -u enterprisedb psql -t -c \"SELECT pg_is_in_recovery();\""
+  register: dc1_recovery
+  changed_when: false
+
+- name: Verify pg-dc1 is primary
+  ansible.builtin.assert:
+    that: "'f' in dc1_recovery.stdout"
+    fail_msg: "pg-dc1 is NOT the primary!"
+    success_msg: "pg-dc1 is PRIMARY (pg_is_in_recovery = false)"
+
+- name: "Step 2: Check replication status on pg-dc1"
+  ansible.builtin.command:
+    cmd: >
+      ssh -o StrictHostKeyChecking=no rhel@pg-dc1
+      "sudo -u enterprisedb psql -c \"SELECT application_name, state, sync_state, pg_wal_lsn_diff(sent_lsn, replay_lsn) AS lag_bytes FROM pg_stat_replication;\""
+  register: repl_status
+  changed_when: false
+
+- name: Show replication status
+  ansible.builtin.debug:
+    var: repl_status.stdout_lines
+
+- name: "Step 3: Check pg-dc2 is STANDBY"
+  ansible.builtin.command:
+    cmd: >
+      ssh -o StrictHostKeyChecking=no rhel@pg-dc2
+      "sudo -u enterprisedb psql -t -c \"SELECT pg_is_in_recovery();\""
+  register: dc2_recovery
+  changed_when: false
+
+- name: Verify pg-dc2 is standby
+  ansible.builtin.assert:
+    that: "'t' in dc2_recovery.stdout"
+    fail_msg: "pg-dc2 is NOT a standby!"
+    success_msg: "pg-dc2 is STANDBY (pg_is_in_recovery = true)"
+
+- name: "Step 4: Create test table on primary to verify replication"
+  ansible.builtin.command:
+    cmd: >
+      ssh -o StrictHostKeyChecking=no rhel@pg-dc1
+      "sudo -u enterprisedb psql -d awx -c \"CREATE TABLE IF NOT EXISTS dr_test (id serial PRIMARY KEY, message text, created_at timestamp DEFAULT now()); INSERT INTO dr_test (message) VALUES ('Replication test from DC1 at ' || now());\""
+  changed_when: true
+
+- name: "Step 5: Wait for replication"
+  ansible.builtin.pause:
+    seconds: 3
+
+- name: "Step 6: Verify test data replicated to pg-dc2"
+  ansible.builtin.command:
+    cmd: >
+      ssh -o StrictHostKeyChecking=no rhel@pg-dc2
+      "sudo -u enterprisedb psql -d awx -c \"SELECT * FROM dr_test ORDER BY id DESC LIMIT 5;\""
+  register: dc2_data
+  changed_when: false
+
+- name: Show replicated data
+  ansible.builtin.debug:
+    var: dc2_data.stdout_lines
+
+- name: "Step 7: Show AAP databases on primary"
+  ansible.builtin.command:
+    cmd: >
+      ssh -o StrictHostKeyChecking=no rhel@pg-dc1
+      "sudo -u enterprisedb psql -c \"SELECT datname, pg_size_pretty(pg_database_size(datname)) AS size FROM pg_database WHERE datname IN ('awx','automationhub','automationedacontroller','automationgateway') ORDER BY datname;\""
+  register: aap_databases
+  changed_when: false
+
+- name: Show AAP databases
+  ansible.builtin.debug:
+    var: aap_databases.stdout_lines

@@ -1,0 +1,225 @@
+# Lab VMs for the EDB HA / DR demo workshop.
+# RHEL / DR topology (which VM runs Postgres vs AAP, DC1 vs DC2) is in topology-rhel.yaml.
+virtualmachines:
+  - name: "control"
+    image: "aap-2.6-2-ceh-20251103"
+    memory: "32G"
+    cores: 4
+    image_size: "50Gi"
+    tags:
+      - key: "AnsibleGroup"
+        value: "isolated"
+    networks:
+      - default
+    userdata: |-
+      #cloud-config
+      user: rhel
+      password: ansible123!
+      chpasswd: { expire: False }
+      runcmd:
+        - sed -i "s/PasswordAuthentication no/PasswordAuthentication yes/" /etc/ssh/sshd_config
+        - systemctl reload sshd
+    services:
+      - name: control-https
+        ports:
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: control-https
+    routes:
+      - name: control-https
+        host: control
+        service: control-https
+        targetPort: 443
+        tls: true
+        tls_termination: reencrypt
+        tls_destinationCACertificate: |
+          -----BEGIN CERTIFICATE-----
+          MIIF1jCCA76gAwIBAgIUBQZlbUZlOmMKhspO9U4/nTJAXAEwDQYJKoZIhvcNAQEL
+          BQAwgYIxCzAJBgNVBAYTAlVTMRcwFQYDVQQIDA5Ob3J0aCBDYXJvbGluYTEQMA4G
+          A1UEBwwHUmFsZWlnaDEQMA4GA1UECgwHUmVkIEhhdDEQMA4GA1UECwwHQW5zaWJs
+          ZTEkMCIGA1UEAwwbQW5zaWJsZSBBdXRvbWF0aW9uIFBsYXRmb3JtMB4XDTI1MDQy
+          MzA4MjEyOVoXDTM1MDQyMTA4MjEyOVowgYIxCzAJBgNVBAYTAlVTMRcwFQYDVQQI
+          DA5Ob3J0aCBDYXJvbGluYTEQMA4GA1UEBwwHUmFsZWlnaDEQMA4GA1UECgwHUmVk
+          IEhhdDEQMA4GA1UECwwHQW5zaWJsZTEkMCIGA1UEAwwbQW5zaWJsZSBBdXRvbWF0
+          aW9uIFBsYXRmb3JtMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA2Ytu
+          a9MM9qr0UBvlIJPXmeSjzQXmx+CJwQAhDoR8MgOkjvWjjEdsX4VHBfQTO58d5sPr
+          oNg95GRe9y9Gjt6Lh7szLk70Q766Ncq8OIBYieiVKctIV+ZZmX7+bBcyzbII/0C9
+          Ili3lNd+XKfl5vmCWoYyuQncC1FZgVpHqZDP/+RCCMThdKEvugbQUmXF6pmEFF7Z
+          8PxYpxnVDX2ipOfWcjZDm6pTBd5+dzXHQVsWe25kY6QW0zEYzPJb3q0gP7oNz1uV
+          rXgYBnKQ8NdoSGtS7w9bvSw28Bf1ZFTvBKeCxWNeoJbiszqdsDd6PEwb4uE1Tr6D
+          qsLfPgvQzngQ+a7YrZ+M6GskQkfk+ZWMK8h6066p27Tzs6/9jMiCFuKwRuKWy9Qi
+          DdCSnwVIw4VB40ysoAHprxBHq4y/YJ2RDiC9EehTXsQf/uAy3M7KBBjVGlMfXxUE
+          NfjbeMdSQip04jKQGhJf8teXTymfcjlGaoCtymB+h4s3hc1T7DjfR0Q1Gd3AIL/p
+          lHOgU4TMBzeghqeDRbY4YQRSI1aF/hzTvAJzMaONs161buKOQ47O5UGGJYHHlJbf
+          aI0s3Mhld1YvIFk78A4tFI9GIwzj4IzVmCv4MZHg2BXKAU6m3Y6bYNabqP6Ho4Fs
+          DZOVkMvwTGKGfRxjdp0kx6HxNmjnVDMXGM9g8cECAwEAAaNCMEAwDgYDVR0PAQH/
+          BAQDAgIEMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFFugxH0taHxJ0/d71phl
+          a1Vt78fTMA0GCSqGSIb3DQEBCwUAA4ICAQApZCo7gI0xdk2TxjOcq+BdNsOvKjWL
+          ADceDM78oPy0xpgKd2u9INITzIY2f4KGcepXslnlMQQvny80N1LXu9Tkn4rhoU03
+          DXb9bXSr44T3fIf4JFU2iv5Hb6Az/DiQ3o9fZnhpW0AmzR1LmZUuFBJZefFBMMKl
+          s2W9C3f3nUPzi1qrGSXszXXbIDYsRMhax/MxWR9mxITuN3T6PhW8A1LyQ8dWRCLw
+          jFFcNuGjlR8w16XhRCw8uA1RzVwNWoUGvMiapboR25N0DLVCG8qf/mdEI4re8MhM
+          EYHugB/e7vRx6iV9ov7jJSB8BrBPWy/7ncebWIf8OvjM2UcUk0hciAQGD4Udbb3s
+          LGcpjZRJDrnpBdp+CJMCNNjoI0wLbmRDEVPGOSkJSmnj+8VTlQ5s+Dxvj2hh/rq7
+          APwxbIl1YBpTx65KwhacJbXSByk8bnwEQdRo240kC5ggC6twb/vvslRortZtyfqw
+          E/xGAKc9LOIFiqk1f0IU2ssEBvSFvYjypXsGnFITamNN2lMS2k5XQIA4avwWsoO4
+          rRLV87ua9S7g31PTYCMJBGw/B3PXhXjJG/eXgLyhEoUQP/fqeGiPEBzagyo71qL5
+          fH5qke1XR5LFGpndX1GuSVBhdZq94x0aGXWTQCDNIPQ3QtrQ64PBF1vRFdJ6o/FI
+          uEOWpQhGYHMC0A==
+          -----END CERTIFICATE-----
+
+  - name: "vscode"
+    image: "devtools-ansible"
+    memory: "8G"
+    cores: 2
+    image_size: "20Gi"
+    disk_type: "scsi"
+    bootloader: "efi"
+    tags:
+      - key: "AnsibleGroup"
+        value: "isolated"
+    networks:
+      - default
+    services:
+      - name: vscode-8080
+        ports:
+          - port: 8080
+            protocol: TCP
+            targetPort: 8080
+            name: vscode
+    routes:
+      - name: vscode-8080
+        host: vscode
+        service: vscode-8080
+        targetPort: 8080
+        tls: true
+        tls_termination: Edge
+    userdata: |-
+      #cloud-config
+      user: rhel
+      password: ansible123!
+      chpasswd: { expire: False }
+      runcmd:
+        - echo "PasswordAuthentication yes" > /etc/ssh/sshd_config.d/50-cloud-init.conf
+        - systemctl reload sshd
+
+  - name: "pg-dc1"
+    image: "rhel-9.5"
+    memory: "8G"
+    cores: 4
+    image_size: "50Gi"
+    tags:
+      - key: "AnsibleGroup"
+        value: "isolated"
+    networks:
+      - default
+    services:
+      - name: pg-dc1-postgres
+        ports:
+          - port: 5432
+            protocol: TCP
+            targetPort: 5432
+            name: pg-dc1-postgres
+    userdata: |-
+      #cloud-config
+      user: rhel
+      password: ansible123!
+      chpasswd: { expire: False }
+      runcmd:
+        - sed -i "s/PasswordAuthentication no/PasswordAuthentication yes/" /etc/ssh/sshd_config
+        - systemctl reload sshd
+
+  - name: "pg-dc2"
+    image: "rhel-9.5"
+    memory: "8G"
+    cores: 4
+    image_size: "50Gi"
+    tags:
+      - key: "AnsibleGroup"
+        value: "isolated"
+    networks:
+      - default
+    services:
+      - name: pg-dc2-postgres
+        ports:
+          - port: 5432
+            protocol: TCP
+            targetPort: 5432
+            name: pg-dc2-postgres
+    userdata: |-
+      #cloud-config
+      user: rhel
+      password: ansible123!
+      chpasswd: { expire: False }
+      runcmd:
+        - sed -i "s/PasswordAuthentication no/PasswordAuthentication yes/" /etc/ssh/sshd_config
+        - systemctl reload sshd
+
+  - name: "aap-dc2"
+    image: "aap-2.6-2-ceh-20251103"
+    memory: "32G"
+    cores: 4
+    image_size: "50Gi"
+    tags:
+      - key: "AnsibleGroup"
+        value: "isolated"
+    networks:
+      - default
+    userdata: |-
+      #cloud-config
+      user: rhel
+      password: ansible123!
+      chpasswd: { expire: False }
+      runcmd:
+        - sed -i "s/PasswordAuthentication no/PasswordAuthentication yes/" /etc/ssh/sshd_config
+        - systemctl reload sshd
+    services:
+      - name: aap-dc2-https
+        ports:
+          - port: 443
+            protocol: TCP
+            targetPort: 443
+            name: aap-dc2-https
+    routes:
+      - name: aap-dc2-https
+        host: aap-dc2
+        service: aap-dc2-https
+        targetPort: 443
+        tls: true
+        tls_termination: reencrypt
+        tls_destinationCACertificate: |
+          -----BEGIN CERTIFICATE-----
+          MIIF1jCCA76gAwIBAgIUBQZlbUZlOmMKhspO9U4/nTJAXAEwDQYJKoZIhvcNAQEL
+          BQAwgYIxCzAJBgNVBAYTAlVTMRcwFQYDVQQIDA5Ob3J0aCBDYXJvbGluYTEQMA4G
+          A1UEBwwHUmFsZWlnaDEQMA4GA1UECgwHUmVkIEhhdDEQMA4GA1UECwwHQW5zaWJs
+          ZTEkMCIGA1UEAwwbQW5zaWJsZSBBdXRvbWF0aW9uIFBsYXRmb3JtMB4XDTI1MDQy
+          MzA4MjEyOVoXDTM1MDQyMTA4MjEyOVowgYIxCzAJBgNVBAYTAlVTMRcwFQYDVQQI
+          DA5Ob3J0aCBDYXJvbGluYTEQMA4GA1UEBwwHUmFsZWlnaDEQMA4GA1UECgwHUmVk
+          IEhhdDEQMA4GA1UECwwHQW5zaWJsZTEkMCIGA1UEAwwbQW5zaWJsZSBBdXRvbWF0
+          aW9uIFBsYXRmb3JtMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA2Ytu
+          a9MM9qr0UBvlIJPXmeSjzQXmx+CJwQAhDoR8MgOkjvWjjEdsX4VHBfQTO58d5sPr
+          oNg95GRe9y9Gjt6Lh7szLk70Q766Ncq8OIBYieiVKctIV+ZZmX7+bBcyzbII/0C9
+          Ili3lNd+XKfl5vmCWoYyuQncC1FZgVpHqZDP/+RCCMThdKEvugbQUmXF6pmEFF7Z
+          8PxYpxnVDX2ipOfWcjZDm6pTBd5+dzXHQVsWe25kY6QW0zEYzPJb3q0gP7oNz1uV
+          rXgYBnKQ8NdoSGtS7w9bvSw28Bf1ZFTvBKeCxWNeoJbiszqdsDd6PEwb4uE1Tr6D
+          qsLfPgvQzngQ+a7YrZ+M6GskQkfk+ZWMK8h6066p27Tzs6/9jMiCFuKwRuKWy9Qi
+          DdCSnwVIw4VB40ysoAHprxBHq4y/YJ2RDiC9EehTXsQf/uAy3M7KBBjVGlMfXxUE
+          NfjbeMdSQip04jKQGhJf8teXTymfcjlGaoCtymB+h4s3hc1T7DjfR0Q1Gd3AIL/p
+          lHOgU4TMBzeghqeDRbY4YQRSI1aF/hzTvAJzMaONs161buKOQ47O5UGGJYHHlJbf
+          aI0s3Mhld1YvIFk78A4tFI9GIwzj4IzVmCv4MZHg2BXKAU6m3Y6bYNabqP6Ho4Fs
+          DZOVkMvwTGKGfRxjdp0kx6HxNmjnVDMXGM9g8cECAwEAAaNCMEAwDgYDVR0PAQH/
+          BAQDAgIEMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFFugxH0taHxJ0/d71phl
+          a1Vt78fTMA0GCSqGSIb3DQEBCwUAA4ICAQApZCo7gI0xdk2TxjOcq+BdNsOvKjWL
+          ADceDM78oPy0xpgKd2u9INITzIY2f4KGcepXslnlMQQvny80N1LXu9Tkn4rhoU03
+          DXb9bXSr44T3fIf4JFU2iv5Hb6Az/DiQ3o9fZnhpW0AmzR1LmZUuFBJZefFBMMKl
+          s2W9C3f3nUPzi1qrGSXszXXbIDYsRMhax/MxWR9mxITuN3T6PhW8A1LyQ8dWRCLw
+          jFFcNuGjlR8w16XhRCw8uA1RzVwNWoUGvMiapboR25N0DLVCG8qf/mdEI4re8MhM
+          EYHugB/e7vRx6iV9ov7jJSB8BrBPWy/7ncebWIf8OvjM2UcUk0hciAQGD4Udbb3s
+          LGcpjZRJDrnpBdp+CJMCNNjoI0wLbmRDEVPGOSkJSmnj+8VTlQ5s+Dxvj2hh/rq7
+          APwxbIl1YBpTx65KwhacJbXSByk8bnwEQdRo240kC5ggC6twb/vvslRortZtyfqw
+          E/xGAKc9LOIFiqk1f0IU2ssEBvSFvYjypXsGnFITamNN2lMS2k5XQIA4avwWsoO4
+          rRLV87ua9S7g31PTYCMJBGw/B3PXhXjJG/eXgLyhEoUQP/fqeGiPEBzagyo71qL5
+          fH5qke1XR5LFGpndX1GuSVBhdZq94x0aGXWTQCDNIPQ3QtrQ64PBF1vRFdJ6o/FI
+          uEOWpQhGYHMC0A==
+          -----END CERTIFICATE-----

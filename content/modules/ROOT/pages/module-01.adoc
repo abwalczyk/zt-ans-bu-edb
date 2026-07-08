@@ -1,0 +1,81 @@
+= Module 1: Architecture -- Active / Passive DR
+
+== Overview [[overview]]
+
+This module explains the multi-datacenter active/passive DR architecture used in this demo. There is nothing to configure here -- just review the architecture before the hands-on modules.
+
+=== The problem
+
+When AAP becomes mission-critical infrastructure, a database failure or datacenter outage halts automation across the enterprise. Traditional backup-and-restore approaches offer recovery times measured in hours. For platforms supporting compliance enforcement, incident response, and multi-cloud deployments, this is unacceptable.
+
+=== The solution
+
+Active/passive DR deploys a complete AAP stack in two datacenters:
+
+* **DC1 (active)** -- AAP services handle all traffic; EDB Postgres primary serves all reads and writes
+* **DC2 (passive)** -- AAP services are stopped; EDB Postgres standby receives streaming replication
+
+When DC1 fails, the DC2 database is promoted and AAP services are started. Target: **RTO under 5 minutes, RPO under 5 seconds**.
+
+== Demo topology [[topology]]
+
+This lab uses 5 VMs to represent the logical architecture:
+
+[source]
+----
+                    ┌───────────────────────┐
+                    │   DC1 (Active)        │
+                    │                       │
+                    │   control (AAP)       │──── AAP DC1 tab
+                    │       │               │
+                    │   pg-dc1 (PRIMARY)    │
+                    │       │               │
+                    └───────┼───────────────┘
+                            │ streaming replication
+                    ┌───────┼───────────────┐
+                    │       ▼               │
+                    │   DC2 (Passive)       │
+                    │                       │
+                    │   pg-dc2 (STANDBY)    │
+                    │       │               │
+                    │   aap-dc2 (STOPPED)   │──── AAP DC2 tab (after failover)
+                    │                       │
+                    └───────────────────────┘
+
+    vscode ── VS Code tab (IDE for hands-on)
+----
+
+[cols="1,2,2"]
+|===
+|VM |Role |Database
+
+|`{aap_dc1_host}`
+|AAP Controller DC1 (active)
+|Connected to `{pg_dc1_host}`
+
+|`{pg_dc1_host}`
+|EDB Postgres Advanced Server 16
+|PRIMARY -- all reads and writes
+
+|`{pg_dc2_host}`
+|EDB Postgres Advanced Server 16
+|STANDBY -- streaming replica of DC1
+
+|`{aap_dc2_host}`
+|AAP Controller DC2 (standby)
+|Connected to `{pg_dc2_host}` (services stopped)
+
+|`{vscode_host}`
+|VS Code IDE
+|N/A
+|===
+
+=== Key points for customer conversations
+
+* The lab collapses a production 26-VM architecture (13 per DC) into 5 VMs for demo purposes
+* In production, each DC would have 8 AAP VMs (2 gateway, 2 controller, 2 hub, 2 EDA), 3 PostgreSQL VMs, plus HAProxy and Barman
+* The replication and failover patterns are identical -- only the scale differs
+
+== Next
+
+Continue to xref:module-02.adoc[Module 2] to verify that EDB Postgres streaming replication is working between DC1 and DC2.

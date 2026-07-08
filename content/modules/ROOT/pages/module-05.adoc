@@ -1,0 +1,137 @@
+= Module 5: Operations and Next Steps
+
+== Overview [[overview]]
+
+Now that you have seen a DR failover in action, this module covers operational topics for production deployments.
+
+== Health checks [[health-checks]]
+
+=== Check AAP health
+
+[source,bash]
+----
+# Check both AAP instances
+curl -k -s -o /dev/null -w "DC1: HTTP %{http_code}\n" https://{aap_dc1_host}/api/v2/ping/
+curl -k -s -o /dev/null -w "DC2: HTTP %{http_code}\n" https://{aap_dc2_host}/api/v2/ping/
+----
+
+=== Check database roles
+
+[source,bash]
+----
+# Which node is PRIMARY?
+for host in {pg_dc1_host} {pg_dc2_host}; do
+  ROLE=$(ssh {ssh_user}@${host} \
+    "sudo -u enterprisedb psql -t -c 'SELECT pg_is_in_recovery();'" 2>/dev/null | tr -d '[:space:]')
+  echo "${host}: $([ \"${ROLE}\" = 'f' ] && echo 'PRIMARY' || echo 'STANDBY')"
+done
+----
+
+=== Check replication lag
+
+[source,bash]
+----
+# Run from the current primary
+ssh {ssh_user}@{pg_dc2_host} "sudo -u enterprisedb psql -c \"
+  SELECT application_name, state,
+         pg_wal_lsn_diff(sent_lsn, replay_lsn) AS lag_bytes
+  FROM pg_stat_replication;\""
+----
+
+== Production considerations [[production]]
+
+=== Scale
+
+The demo uses 5 VMs. A production deployment follows Red Hat's Container Enterprise Topology:
+
+[cols="2,1,1"]
+|===
+|Component |Per DC |Total
+
+|Platform Gateway (+ Redis)
+|2
+|4
+
+|Automation Controller
+|2
+|4
+
+|Automation Hub (+ Redis)
+|2
+|4
+
+|Event-Driven Ansible (+ Redis)
+|2
+|4
+
+|PostgreSQL (EDB + EFM)
+|3
+|6
+
+|HAProxy
+|1
+|2
+
+|Barman backup server
+|1
+|2
+
+|**Total**
+|**13**
+|**26**
+|===
+
+=== EDB Failover Manager (EFM)
+
+In production, EFM automates what you did manually in Module 4:
+
+* Detects primary failure via heartbeats
+* Promotes the designated primary on DC2
+* Manages Virtual IP (VIP) migration
+* Executes a post-promotion script that starts AAP services
+* Total automated failover time: under 5 minutes
+
+=== Failback procedure
+
+After DC1 infrastructure is restored:
+
+. Rebuild DC1 as a standby of DC2 (`pg_basebackup` from the new primary)
+. Verify replication is flowing DC2 -> DC1
+. Stop AAP on DC2
+. Promote DC1 back to primary
+. Rebuild DC2 as standby of DC1
+. Start AAP on DC1
+. Update GLB to route traffic to DC1
+
+=== WAL archiving
+
+EDB with Barman provides continuous WAL archiving to S3/NFS for point-in-time recovery beyond streaming replication.
+
+=== Monitoring
+
+Key metrics to track:
+
+* Replication lag (`pg_stat_replication`)
+* EFM cluster status (`efm cluster-status efm`)
+* AAP API health (`/api/v2/ping/`)
+* Database connection count and performance
+
+== Repository layout
+
+[source]
+----
+zt-ans-bu-edb/
+├── config/              # instances, topology, firewall, setup_targets, bootstrap SQL
+├── content/             # AsciiDoc workshop (Antora)
+├── runtime-automation/  # Per-module solve/validation playbooks
+├── setup-automation/    # Base VM setup (main.yml + setup-<host>.sh)
+├── scripts/             # DR failover demo, health checks, replication checks
+└── utilities/           # lab-build, lab-serve, lab-clean, lab-stop
+----
+
+== Related resources
+
+* https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/[AAP 2.6 Documentation]
+* https://www.enterprisedb.com/docs/epas/latest/[EDB Postgres Advanced Server]
+* https://www.enterprisedb.com/docs/efm/latest/[EDB Failover Manager]
+* https://github.com/Red-Hat-EnterpriseDB-Testing/EDB_Testing[EDB Testing Repository] -- full architecture, scripts, and testing framework

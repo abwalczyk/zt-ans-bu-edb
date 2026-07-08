@@ -1,0 +1,70 @@
+= {lab_name}
+:toc:
+:toc-placement!:
+
+This hands-on demo shows **Ansible Automation Platform (AAP) 2.6** with **EnterpriseDB (EDB) Postgres Advanced Server** in an active/passive, multi-datacenter disaster recovery architecture. You will see primary workload in DC1, a streaming replica in DC2, and a live failover that activates the standby AAP instance.
+
+toc::[]
+
+== Demo intent
+
+* Show customers how **AAP + EDB Postgres on RHEL** delivers enterprise-grade automation with DR capability -- **RTO under 5 minutes, RPO under 5 seconds**.
+* Demonstrate a controlled failover: stop the primary database, promote the replica, and bring up the standby AAP -- all within the lab.
+
+== What you will see
+
+* **DC1 (active)** -- `{aap_dc1_host}` running AAP, connected to `{pg_dc1_host}` (EDB Postgres primary)
+* **DC2 (passive)** -- `{aap_dc2_host}` with AAP services stopped, connected to `{pg_dc2_host}` (EDB Postgres standby)
+* **Streaming replication** -- asynchronous replication from DC1 to DC2, continuously copying all AAP data
+* **Failover** -- in Module 4, you will trigger a DR event and see DC2 come online
+
+== Lab environment
+
+[cols="1,2,2"]
+|===
+|VM |Role |Access
+
+|`{aap_dc1_host}`
+|AAP Controller (DC1 active)
+|AAP DC1 tab
+
+|`{aap_dc2_host}`
+|AAP Controller (DC2 standby)
+|AAP DC2 tab (after failover)
+
+|`{pg_dc1_host}`
+|EDB Postgres primary (DC1)
+|SSH from VS Code terminal
+
+|`{pg_dc2_host}`
+|EDB Postgres standby (DC2)
+|SSH from VS Code terminal
+
+|`{vscode_host}`
+|VS Code IDE
+|VS Code tab
+|===
+
+Credentials: SSH user `{ssh_user}` / password `{ssh_password}`, AAP admin `{aap_admin_user}` / `{aap_admin_password}`
+
+== Workshop modules
+
+[cols="1,3,2"]
+|===
+|Module |Title |Focus
+
+|1 |xref:module-01.adoc[Architecture]
+|Active/passive model and demo topology
+
+|2 |xref:module-02.adoc[EDB Postgres]
+|Verify streaming replication between DC1 and DC2
+
+|3 |xref:module-03.adoc[AAP + external Postgres]
+|Run a job on AAP DC1, verify data in EDB
+
+|4 |xref:module-04.adoc[Simulated DR failover]
+|Stop DC1 database, promote DC2, activate standby AAP
+
+|5 |xref:module-05.adoc[Operations]
+|Health checks, production considerations, next steps
+|===

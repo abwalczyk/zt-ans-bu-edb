@@ -1,0 +1,80 @@
+---
+# Module 04 Validation: Verify DR failover was successful.
+
+- name: Set validation results
+  ansible.builtin.set_fact:
+    validation_results: []
+
+- name: Check pg-dc2 is now primary
+  ansible.builtin.command:
+    cmd: >
+      ssh -o StrictHostKeyChecking=no rhel@pg-dc2
+      "sudo -u enterprisedb psql -t -c \"SELECT pg_is_in_recovery();\""
+  register: dc2_primary
+  changed_when: false
+  ignore_errors: true
+
+- name: Record DC2 primary check
+  ansible.builtin.set_fact:
+    validation_results: "{{ validation_results + [{'check': 'pg-dc2 promoted to PRIMARY', 'status': '[OK]' if 'f' in (dc2_primary.stdout | default('')) else '[X]'}] }}"
+
+- name: Check pg-dc1 is stopped
+  ansible.builtin.command:
+    cmd: >
+      ssh -o StrictHostKeyChecking=no rhel@pg-dc1
+      "sudo systemctl is-active edb-as-16"
+  register: dc1_status
+  changed_when: false
+  failed_when: false
+
+- name: Record DC1 stopped check
+  ansible.builtin.set_fact:
+    validation_results: "{{ validation_results + [{'check': 'pg-dc1 EDB Postgres stopped (simulated failure)', 'status': '[OK]' if dc1_status.stdout | default('') != 'active' else '[X]'}] }}"
+
+- name: Check AAP DC2 API responds
+  ansible.builtin.uri:
+    url: "https://aap-dc2/api/v2/ping/"
+    method: GET
+    validate_certs: false
+    status_code: 200
+  register: dc2_aap
+  ignore_errors: true
+
+- name: Record DC2 AAP check
+  ansible.builtin.set_fact:
+    validation_results: "{{ validation_results + [{'check': 'AAP DC2 API responds (HTTP 200)', 'status': '[OK]' if dc2_aap.status | default(0) == 200 else '[X]'}] }}"
+
+- name: Check for successful jobs on DC2
+  ansible.builtin.uri:
+    url: "https://aap-dc2/api/v2/jobs/?status=successful&page_size=1"
+    method: GET
+    user: "{{ aap_username }}"
+    password: "{{ aap_password }}"
+    validate_certs: false
+    force_basic_auth: true
+    status_code: 200
+  register: dc2_jobs
+  ignore_errors: true
+
+- name: Record DC2 job check
+  ansible.builtin.set_fact:
+    validation_results: "{{ validation_results + [{'check': 'Test job ran successfully on DC2 AAP', 'status': '[OK]' if (dc2_jobs.json.count | default(0)) > 0 else '[X]'}] }}"
+
+- name: Show validation results
+  ansible.builtin.debug:
+    msg: "{{ item.status }} {{ item.check }}"
+  loop: "{{ validation_results }}"
+
+- name: Overall result
+  ansible.builtin.debug:
+    msg: >-
+      {% if validation_results | selectattr('status', 'equalto', '[X]') | list | length == 0 %}
+      PASS: DR failover completed successfully. AAP is now running on DC2 with promoted EDB Postgres.
+      {% else %}
+      FAIL: Some failover checks did not pass. Review the results above.
+      {% endif %}
+
+- name: Fail if validation errors
+  ansible.builtin.fail:
+    msg: "Failover validation failed -- see results above"
+  when: validation_results | selectattr('status', 'equalto', '[X]') | list | length > 0

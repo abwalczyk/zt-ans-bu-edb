@@ -1,0 +1,39 @@
+---
+
+antora:
+  name: modules
+  dir: www
+  modules:
+    - name: module-01
+      label: "Architecture -- active / passive and this demo"
+      solveButton: false
+    - name: module-02
+      label: "EDB Postgres -- clusters and replication"
+      solveButton: true
+    - name: module-03
+      label: "AAP with external EDB Postgres"
+      solveButton: true
+    - name: module-04
+      label: "Simulated DR failover"
+      solveButton: true
+    - name: module-05
+      label: "Operations and next steps"
+      solveButton: false
+
+tabs:
+  - name: AAP DC1
+    url: https://control-${guid}.${domain}/
+    external: false
+    modules:
+      - module-01
+      - module-02
+      - module-03
+      - module-04
+  - name: AAP DC2
+    url: https://aap-dc2-${guid}.${domain}/
+    external: true
+    modules:
+      - module-04
+  - name: VS Code
+    url: https://vscode-${guid}.${domain}
+    external: true

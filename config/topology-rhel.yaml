@@ -1,0 +1,41 @@
+# RHEL / VM layout for EDB Postgres + AAP active/passive DR demo.
+# These host short names match config/instances.yaml and setup-automation scripts.
+
+sites:
+  dc1_active:
+    description: "Primary site -- live writes, AAP active, Postgres primary"
+    postgres_vms:
+      - pg-dc1
+    aap_vms:
+      - control
+    glb_or_vip: "control-${GUID}.${DOMAIN}"
+
+  dc2_passive:
+    description: "DR site -- standby AAP (services stopped), Postgres streaming replica"
+    postgres_vms:
+      - pg-dc2
+    aap_vms:
+      - aap-dc2
+    glb_or_vip: "aap-dc2-${GUID}.${DOMAIN}"
+
+global_entry:
+  dns: "aap.example.com"
+  notes: >-
+    In production, a GLB (F5/Route53/HAProxy) fronts both sites with
+    health-check-based routing. In this demo lab, users access each
+    AAP instance directly via its Showroom route.
+
+edb_vm_notes:
+  version: "EDB Postgres Advanced Server 16"
+  replication: "Asynchronous streaming replication from pg-dc1 (primary) to pg-dc2 (standby)"
+  efm: "EFM co-located on each Postgres VM for automated failover"
+  databases:
+    - awx
+    - automationhub
+    - automationedacontroller
+    - automationgateway
+
+aap_vm_notes:
+  version: "AAP 2.6 Container Enterprise Topology (single-node demo variant)"
+  dc1: "control -- AAP active, connected to pg-dc1 as external database"
+  dc2: "aap-dc2 -- AAP standby, services stopped until DR failover"

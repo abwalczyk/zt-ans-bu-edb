@@ -1,0 +1,84 @@
+---
+# Module 03 Solve: AAP with external EDB Postgres
+# Launches a test job on the active AAP (control) and verifies data in EDB.
+
+- name: "Step 1: Verify AAP API is healthy"
+  ansible.builtin.uri:
+    url: "{{ aap_host }}/api/v2/ping/"
+    method: GET
+    validate_certs: false
+    status_code: 200
+  register: aap_ping
+
+- name: Show AAP health
+  ansible.builtin.debug:
+    msg: "AAP API responding: HTTP {{ aap_ping.status }}"
+
+- name: "Step 2: Look up the Health Check job template"
+  ansible.builtin.uri:
+    url: "{{ aap_host }}/api/v2/job_templates/?name=AAP+Health+Check"
+    method: GET
+    user: "{{ aap_username }}"
+    password: "{{ aap_password }}"
+    validate_certs: false
+    force_basic_auth: true
+    status_code: 200
+  register: template_lookup
+
+- name: "Step 3: Launch the Health Check job"
+  ansible.builtin.uri:
+    url: "{{ aap_host }}{{ template_lookup.json.results[0].related.launch }}"
+    method: POST
+    user: "{{ aap_username }}"
+    password: "{{ aap_password }}"
+    validate_certs: false
+    force_basic_auth: true
+    status_code:
+      - 201
+      - 202
+  register: job_launch
+  when: template_lookup.json.count > 0
+
+- name: "Step 3a: Wait for job to complete"
+  ansible.builtin.uri:
+    url: "{{ aap_host }}/api/v2/jobs/{{ job_launch.json.id }}/"
+    method: GET
+    user: "{{ aap_username }}"
+    password: "{{ aap_password }}"
+    validate_certs: false
+    force_basic_auth: true
+    status_code: 200
+  register: job_status
+  until: job_status.json.status in ['successful', 'failed', 'error', 'canceled']
+  retries: 30
+  delay: 10
+  when: job_launch is defined and job_launch.json is defined
+
+- name: Show job result
+  ansible.builtin.debug:
+    msg: "Job {{ job_launch.json.id | default('N/A') }} status: {{ job_status.json.status | default('skipped') }}"
+  when: job_status is defined
+
+- name: "Step 4: Verify job data exists in EDB Postgres"
+  ansible.builtin.command:
+    cmd: >
+      ssh -o StrictHostKeyChecking=no rhel@pg-dc1
+      "sudo -u enterprisedb psql -d awx -t -c \"SELECT count(*) FROM main_job WHERE id > 0;\""
+  register: job_count
+  changed_when: false
+
+- name: Show job records in database
+  ansible.builtin.debug:
+    msg: "Total jobs recorded in EDB Postgres (awx database): {{ job_count.stdout | trim }}"
+
+- name: "Step 5: Verify data replicated to DC2"
+  ansible.builtin.command:
+    cmd: >
+      ssh -o StrictHostKeyChecking=no rhel@pg-dc2
+      "sudo -u enterprisedb psql -d awx -t -c \"SELECT count(*) FROM main_job WHERE id > 0;\""
+  register: dc2_job_count
+  changed_when: false
+
+- name: Show DC2 replication
+  ansible.builtin.debug:
+    msg: "Jobs replicated to DC2: {{ dc2_job_count.stdout | trim }} (DC1 has {{ job_count.stdout | trim }})"

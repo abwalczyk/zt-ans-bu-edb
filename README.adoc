@@ -1,0 +1,93 @@
+= AAP with EDB Postgres -- Multi-Datacenter DR Demo
+:toc:
+:toc-placement!:
+
+Showroom demo lab for **Ansible Automation Platform 2.6** with **EDB Postgres Advanced Server 16** in an active/passive multi-datacenter disaster recovery architecture.
+
+toc::[]
+
+== Purpose
+
+* Demonstrate **active/passive AAP** with **EDB Postgres streaming replication** and **automated failover** to customers
+* Show **RTO under 5 minutes** and **RPO under 5 seconds** in a live demo
+* Run on **5 RHEL VMs** representing two logical datacenters
+
+== Lab topology
+
+[cols="1,2,2"]
+|===
+|VM |Role |Datacenter
+
+|`control`
+|AAP Controller (active)
+|DC1
+
+|`pg-dc1`
+|EDB Postgres primary
+|DC1
+
+|`pg-dc2`
+|EDB Postgres standby (streaming replica)
+|DC2
+
+|`aap-dc2`
+|AAP Controller (standby, services stopped)
+|DC2
+
+|`vscode`
+|VS Code IDE
+|--
+|===
+
+== Repository structure
+
+[source]
+----
+zt-ans-bu-edb/
+├── config/              # VM instances, topology, firewall, setup targets, bootstrap SQL
+├── content/             # AsciiDoc workshop (Antora) -- 5 modules
+├── runtime-automation/  # Per-module solve/validation playbooks (modules 2-4)
+├── setup-automation/    # Base VM provisioning (main.yml + setup-<host>.sh)
+├── scripts/             # DR failover demo, health checks, replication checks
+├── utilities/           # lab-build, lab-serve, lab-clean, lab-stop
+├── site.yml             # Antora playbook
+└── ui-config.yml        # Showroom module labels and tabs
+----
+
+== Workshop modules
+
+[cols="1,3,2"]
+|===
+|# |Title |Type
+
+|1 |Architecture -- active / passive DR |Informational
+|2 |EDB Postgres -- clusters and replication |Hands-on (solve/validation)
+|3 |AAP with external EDB Postgres |Hands-on (solve/validation)
+|4 |Simulated DR failover |Hands-on (solve/validation)
+|5 |Operations and next steps |Reference
+|===
+
+== Build the static site locally
+
+Requires `podman` (or adjust `utilities/lab-build` for Docker).
+
+[source,bash]
+----
+./utilities/lab-build
+./utilities/lab-serve
+# Open http://localhost:8080
+----
+
+== Getting started
+
+. Review `config/REQUIRED_INPUTS.txt` for environment variables and prerequisites
+. Ensure EDB Postgres Advanced Server repo access is configured
+. Run `setup-automation/main.yml` to provision VMs
+. Access the Showroom lab and work through modules 1-5
+
+== References
+
+* https://github.com/Red-Hat-EnterpriseDB-Testing/EDB_Testing[EDB Testing Repository] -- full architecture, scripts, and testing framework
+* https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/[AAP 2.6 Documentation]
+* https://www.enterprisedb.com/docs/epas/latest/[EDB Postgres Advanced Server Documentation]
+* https://www.enterprisedb.com/docs/efm/latest/[EDB Failover Manager Documentation]

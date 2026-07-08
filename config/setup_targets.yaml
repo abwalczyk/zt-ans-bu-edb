@@ -1,0 +1,8 @@
+# Host short names that receive setup-<name>.sh during setup-automation.
+# Names must match SSH inventory names and filenames (e.g. setup-pg-dc1.sh).
+setup_hosts:
+  - control
+  - vscode
+  - pg-dc1
+  - pg-dc2
+  - aap-dc2

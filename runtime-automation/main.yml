@@ -1,0 +1,25 @@
+---
+# Runtime automation entry point for Showroom solve/validation buttons.
+# Called with extra vars: module_dir (e.g. module-02) and module_stage (solve or validation).
+- name: EDB HA Demo - Runtime Automation
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    aap_host: "https://control"
+    aap_username: "admin"
+    aap_password: "ansible123!"
+    _module_dir: "{{ module_dir | default('module-02') }}"
+    module_stage: "{{ module_stage | default('solve') }}"
+    bastion_user: "{{ lookup('ansible.builtin.env', 'BASTION_USER', default='rhel') }}"
+    bastion_password: "{{ lookup('ansible.builtin.env', 'BASTION_PASSWORD', default='ansible123!') }}"
+
+  tasks:
+    - name: Load optional secrets
+      ansible.builtin.include_vars:
+        file: secrets.yaml
+      ignore_errors: true
+
+    - name: "Include {{ module_stage }} tasks for {{ _module_dir }}"
+      ansible.builtin.include_tasks:
+        file: "{{ _module_dir }}/{{ module_stage }}.yml"

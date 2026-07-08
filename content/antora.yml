@@ -1,0 +1,27 @@
+name: modules
+title: Exercises
+version: master
+nav:
+  - modules/ROOT/nav.adoc
+
+asciidoc:
+  attributes:
+    lab_name: "AAP with EDB Postgres -- HA / DR Demo"
+    release-version: master
+    page-pagination: true
+    guid: my-guid
+    ssh_user: rhel
+    ssh_password: ansible123!
+    aap_admin_user: admin
+    aap_admin_password: ansible123!
+    pg_dc1_host: pg-dc1
+    pg_dc2_host: pg-dc2
+    aap_dc1_host: control
+    aap_dc2_host: aap-dc2
+    vscode_host: vscode
+    db_password: RedHatEDB2026!
+    page-links:
+    - url: https://redhat.com
+      text: Red Hat
+    - url: https://www.enterprisedb.com
+      text: EnterpriseDB

@@ -1,0 +1,38 @@
+What to provide so setup-automation + config stay aligned with the EDB HA demo lab
+==================================================================================
+
+1) SSH / bastion (environment variables for setup-automation/main.yml)
+   - BASTION_HOST, BASTION_PORT, BASTION_USER, BASTION_PASSWORD
+   - Lab VMs must resolve from the bastion using these short names:
+     control, vscode, pg-dc1, pg-dc2, aap-dc2
+
+2) config/setup_targets.yaml
+   - Lists all 5 hosts: control, vscode, pg-dc1, pg-dc2, aap-dc2
+   - Each has a matching setup-<name>.sh in setup-automation/
+
+3) config/instances.yaml
+   - 5 VM definitions: control (AAP DC1), vscode (IDE), pg-dc1 (EDB primary),
+     pg-dc2 (EDB standby), aap-dc2 (AAP DC2 standby)
+
+4) config/firewall.yaml
+   - Must allow: 443 (HTTPS/AAP), 80 (HTTP), 22 (SSH), 8080 (VS Code),
+     5432 (PostgreSQL), 7800 (EFM cluster)
+
+5) config/topology-rhel.yaml
+   - DC1: pg-dc1 + control  |  DC2: pg-dc2 + aap-dc2
+
+6) config/bootstrap/create-aap-databases.sql
+   - Creates the 4 AAP databases (awx, automationhub, automationedacontroller,
+     automationgateway) and the aap role on the EDB primary.
+
+7) Subscription / identity (environment variables)
+   - SATELLITE_URL, SATELLITE_ORG, SATELLITE_ACTIVATIONKEY -- for RHEL registration
+   - GUID, DOMAIN -- for Showroom route construction
+   - EDB_REPO_TOKEN or EDB subscription credentials -- for EDB package installation
+
+8) Per-host setup scripts (setup-automation/)
+   - setup-control.sh:  AAP configuration, external DB pointing to pg-dc1
+   - setup-vscode.sh:   VS Code, dev tools, demo scripts
+   - setup-pg-dc1.sh:   EDB Postgres primary install + AAP database bootstrap
+   - setup-pg-dc2.sh:   EDB Postgres standby + streaming replication from pg-dc1
+   - setup-aap-dc2.sh:  AAP install (same SECRET_KEY as DC1), then stop all services

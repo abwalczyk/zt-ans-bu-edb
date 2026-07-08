@@ -1,0 +1,147 @@
+= Module 4: Simulated DR Failover
+
+== Overview [[overview]]
+
+This is the key demo module. You will simulate a datacenter failure by stopping the DC1 database, then execute a DR failover:
+
+. Stop EDB Postgres on DC1 (simulate failure)
+. Promote DC2 database to primary
+. Start AAP services on DC2
+. Verify AAP DC2 is operational
+
+After this module, DC2 will be the active site.
+
+[IMPORTANT]
+====
+This failover is **destructive** to the DC1 -> DC2 replication relationship. In production, a failback procedure would rebuild DC1 as a standby of DC2. See Module 5 for details.
+====
+
+== Execute failover [[failover]]
+
+You can run the failover using the **Solve** button, or step through it manually from the **VS Code** terminal.
+
+=== Step 1: Verify current state
+
+Confirm DC1 is active before proceeding:
+
+[source,bash]
+----
+# DC1 AAP should respond
+curl -k -s -o /dev/null -w "DC1 AAP: HTTP %{http_code}\n" \
+  https://{aap_dc1_host}/api/v2/ping/
+
+# pg-dc1 should be PRIMARY
+ssh {ssh_user}@{pg_dc1_host} "sudo -u enterprisedb psql -t -c 'SELECT pg_is_in_recovery();'"
+
+# pg-dc2 should be STANDBY
+ssh {ssh_user}@{pg_dc2_host} "sudo -u enterprisedb psql -t -c 'SELECT pg_is_in_recovery();'"
+----
+
+=== Step 2: Simulate DC1 database failure
+
+[source,bash]
+----
+ssh {ssh_user}@{pg_dc1_host} "sudo systemctl stop edb-as-16"
+----
+
+DC1 AAP will start failing because its database is down. In production, EFM would detect this automatically.
+
+=== Step 3: Promote DC2 database to primary
+
+[source,bash]
+----
+ssh {ssh_user}@{pg_dc2_host} \
+  "sudo -u enterprisedb /usr/edb/as16/bin/pg_ctl promote -D /var/lib/edb/as16/data"
+----
+
+Wait ~10 seconds, then verify:
+
+[source,bash]
+----
+ssh {ssh_user}@{pg_dc2_host} "sudo -u enterprisedb psql -t -c 'SELECT pg_is_in_recovery();'"
+----
+
+Expected output: `f` (false) -- pg-dc2 is now the **primary**.
+
+=== Step 4: Start AAP services on DC2
+
+Before starting AAP, verify the database is actually primary (split-brain prevention):
+
+[source,bash]
+----
+ssh {ssh_user}@{pg_dc2_host} "sudo -u enterprisedb psql -t -c 'SELECT pg_is_in_recovery();'"
+----
+
+If it returns `f`, proceed:
+
+[source,bash]
+----
+ssh {ssh_user}@{aap_dc2_host} \
+  "sudo systemctl start redis receptor automation-controller-web automation-controller-task nginx"
+----
+
+=== Step 5: Wait for DC2 AAP
+
+AAP takes 2-4 minutes to start. Poll the API:
+
+[source,bash]
+----
+while true; do
+  HTTP=$(curl -k -s -o /dev/null -w "%{http_code}" \
+    https://{aap_dc2_host}/api/v2/ping/ 2>/dev/null)
+  echo "DC2 AAP: HTTP ${HTTP}"
+  [ "${HTTP}" = "200" ] && break
+  sleep 15
+done
+----
+
+== Verify DC2 active [[verify]]
+
+=== Step 6: Access DC2 AAP
+
+Open the **AAP DC2** tab. Log in with `{aap_admin_user}` / `{aap_admin_password}`.
+
+You should see all the same job templates, inventories, and credentials that were on DC1 -- they replicated via EDB streaming replication.
+
+=== Step 7: Verify job history
+
+Navigate to **Views** -> **Jobs**. The jobs you ran in Module 3 should appear here -- proving that the data replicated from DC1 before the failure.
+
+=== Step 8: Run a test job on DC2
+
+Launch the **AAP Health Check** template from DC2 to prove it is fully operational.
+
+=== Using the automated script
+
+Alternatively, you can run the full failover sequence from the **VS Code** terminal using the provided script:
+
+[source,bash]
+----
+cd ~/edb-ha-demo
+ansible-playbook dr-failover.yml
+----
+
+Or using the shell script:
+
+[source,bash]
+----
+# Dry run first
+/home/rhel/edb-ha-demo/scripts/dr-failover-demo.sh --dry-run
+
+# Execute
+/home/rhel/edb-ha-demo/scripts/dr-failover-demo.sh
+----
+
+[TIP]
+====
+**Key talking points after failover:**
+
+* **RTO** -- from database stop to AAP API responding is typically 3-4 minutes (under 5-minute target)
+* **RPO** -- streaming replication lag is typically under 5 seconds, meaning at most 5 seconds of data loss
+* **Data integrity** -- all job history, credentials, and templates were available immediately on DC2
+* **In production**, EFM automates the detection and promotion steps; the post-promotion script starts AAP services automatically
+====
+
+== Next
+
+Continue to xref:module-05.adoc[Module 5] for operational guidance and production considerations.

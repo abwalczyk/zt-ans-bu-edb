@@ -1,0 +1,79 @@
+= Module 3: AAP with External EDB Postgres
+
+== Overview [[overview]]
+
+In this module you will run a job on the **DC1 AAP Controller** (`{aap_dc1_host}`) and verify that the job data is stored in **EDB Postgres** (`{pg_dc1_host}`) and replicated to DC2 (`{pg_dc2_host}`).
+
+This demonstrates the critical data path: AAP writes job history and metadata to EDB Postgres, which replicates to DC2 in real time.
+
+== Run a job [[run-job]]
+
+=== Step 1: Log in to AAP DC1
+
+Open the **AAP DC1** tab and log in:
+
+* Username: `{aap_admin_user}`
+* Password: `{aap_admin_password}`
+
+=== Step 2: Launch a job template
+
+. Navigate to **Resources** -> **Templates**
+. Find the **AAP Health Check** template
+. Click the rocket icon to **Launch**
+. Wait for the job to complete (should show a green checkmark)
+
+Alternatively, from the **VS Code** terminal:
+
+[source,bash]
+----
+curl -k -s -u {aap_admin_user}:{aap_admin_password} \
+  https://{aap_dc1_host}/api/v2/job_templates/ | python3 -m json.tool | grep '"name"'
+----
+
+== Verify data in EDB [[verify-data]]
+
+=== Step 3: Check job data in the database
+
+From the **VS Code** terminal, query the EDB Postgres primary directly:
+
+[source,bash]
+----
+ssh {ssh_user}@{pg_dc1_host} "sudo -u enterprisedb psql -d awx -c \"
+  SELECT id, status, created, finished
+  FROM main_job
+  ORDER BY id DESC
+  LIMIT 5;\""
+----
+
+You should see your job listed with `status = successful`.
+
+=== Step 4: Verify the data replicated to DC2
+
+[source,bash]
+----
+ssh {ssh_user}@{pg_dc2_host} "sudo -u enterprisedb psql -d awx -c \"
+  SELECT id, status, created, finished
+  FROM main_job
+  ORDER BY id DESC
+  LIMIT 5;\""
+----
+
+The same job records should appear on DC2. This is the data that will be available when DC2 is promoted during a failover -- no manual data migration needed.
+
+=== Step 5: Verify DC2 AAP is still stopped
+
+[source,bash]
+----
+ssh {ssh_user}@{aap_dc2_host} "sudo systemctl is-active automation-controller-web"
+----
+
+Expected output: `inactive` -- DC2 AAP services are intentionally stopped in standby mode.
+
+[TIP]
+====
+**Key talking point:** All automation data -- jobs, credentials, inventories, templates -- continuously replicates to DC2 via EDB streaming replication. When a failover happens, the standby AAP starts with a complete, up-to-date copy of everything. RPO is typically under 5 seconds.
+====
+
+== Next
+
+Continue to xref:module-04.adoc[Module 4] for the main event: a simulated DR failover from DC1 to DC2.

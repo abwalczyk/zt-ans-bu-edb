@@ -1,0 +1,25 @@
+* xref:index.adoc[Demo Overview]
+
+* xref:module-01.adoc[1. Architecture -- Active / Passive DR]
+** xref:module-01.adoc#overview[Overview]
+** xref:module-01.adoc#topology[Demo topology]
+
+* xref:module-02.adoc[2. EDB Postgres -- Clusters and Replication]
+** xref:module-02.adoc#overview[Overview]
+** xref:module-02.adoc#verify-replication[Verify replication]
+** xref:module-02.adoc#test-replication[Test data replication]
+
+* xref:module-03.adoc[3. AAP with External EDB Postgres]
+** xref:module-03.adoc#overview[Overview]
+** xref:module-03.adoc#run-job[Run a job]
+** xref:module-03.adoc#verify-data[Verify data in EDB]
+
+* xref:module-04.adoc[4. Simulated DR Failover]
+** xref:module-04.adoc#overview[Overview]
+** xref:module-04.adoc#failover[Execute failover]
+** xref:module-04.adoc#verify[Verify DC2 active]
+
+* xref:module-05.adoc[5. Operations and Next Steps]
+** xref:module-05.adoc#overview[Overview]
+** xref:module-05.adoc#health-checks[Health checks]
+** xref:module-05.adoc#production[Production considerations]

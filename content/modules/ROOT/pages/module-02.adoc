@@ -1,0 +1,91 @@
+= Module 2: EDB Postgres -- Clusters and Replication
+
+== Overview [[overview]]
+
+In this module you will verify that **EDB Postgres Advanced Server 16** is running in a primary/standby configuration with streaming replication between DC1 and DC2.
+
+* `{pg_dc1_host}` -- PRIMARY (read-write, serves DC1 AAP)
+* `{pg_dc2_host}` -- STANDBY (read-only replica, continuously replicating from DC1)
+
+== Verify replication [[verify-replication]]
+
+Open the **VS Code** tab and use the terminal.
+
+=== Step 1: Confirm pg-dc1 is the primary
+
+[source,bash]
+----
+ssh {ssh_user}@{pg_dc1_host} "sudo -u enterprisedb psql -c \"SELECT pg_is_in_recovery();\""
+----
+
+Expected output: `f` (false) -- meaning this node is NOT in recovery, so it is the **primary**.
+
+=== Step 2: Confirm pg-dc2 is a standby
+
+[source,bash]
+----
+ssh {ssh_user}@{pg_dc2_host} "sudo -u enterprisedb psql -c \"SELECT pg_is_in_recovery();\""
+----
+
+Expected output: `t` (true) -- meaning this node IS in recovery mode, so it is a **standby** receiving replication.
+
+=== Step 3: Check replication status on the primary
+
+[source,bash]
+----
+ssh {ssh_user}@{pg_dc1_host} "sudo -u enterprisedb psql -c \"
+  SELECT application_name, state, sync_state,
+         pg_wal_lsn_diff(sent_lsn, replay_lsn) AS lag_bytes
+  FROM pg_stat_replication;\""
+----
+
+You should see `pg-dc2` listed with `state = streaming`.
+
+=== Step 4: View AAP databases
+
+[source,bash]
+----
+ssh {ssh_user}@{pg_dc1_host} "sudo -u enterprisedb psql -c \"
+  SELECT datname, pg_size_pretty(pg_database_size(datname)) AS size
+  FROM pg_database
+  WHERE datname IN ('awx','automationhub','automationedacontroller','automationgateway')
+  ORDER BY datname;\""
+----
+
+All four AAP databases should be listed. These are created during setup and replicate automatically to DC2.
+
+== Test data replication [[test-replication]]
+
+=== Step 5: Create test data on the primary
+
+[source,bash]
+----
+ssh {ssh_user}@{pg_dc1_host} "sudo -u enterprisedb psql -d awx -c \"
+  CREATE TABLE IF NOT EXISTS dr_test (
+    id serial PRIMARY KEY,
+    message text,
+    created_at timestamp DEFAULT now()
+  );
+  INSERT INTO dr_test (message)
+  VALUES ('Replication test from DC1 at ' || now());\""
+----
+
+=== Step 6: Verify it replicated to DC2
+
+Wait a few seconds, then check DC2:
+
+[source,bash]
+----
+ssh {ssh_user}@{pg_dc2_host} "sudo -u enterprisedb psql -d awx -c \"SELECT * FROM dr_test ORDER BY id DESC LIMIT 5;\""
+----
+
+You should see the test row. This proves streaming replication is working -- any data written to DC1 appears on DC2 within seconds.
+
+[TIP]
+====
+In production, this same replication carries all AAP data: job history, credentials, inventories, templates. When DC2 is promoted, all of this data is immediately available to the standby AAP instance.
+====
+
+== Next
+
+Continue to xref:module-03.adoc[Module 3] to see AAP running jobs against the EDB Postgres database and verify the data flow end-to-end.

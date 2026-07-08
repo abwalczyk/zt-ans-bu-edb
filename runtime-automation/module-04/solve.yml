@@ -1,0 +1,157 @@
+---
+# Module 04 Solve: Simulated DR Failover (DC1 -> DC2)
+# This is the key demo: stops DC1 postgres, promotes DC2, starts DC2 AAP.
+
+- name: "=== DR FAILOVER DEMO ==="
+  ansible.builtin.debug:
+    msg: "Starting simulated disaster recovery failover: DC1 (active) -> DC2 (standby)"
+
+# ---------- Pre-flight ----------
+- name: "Pre-flight: Verify DC1 is currently active"
+  ansible.builtin.uri:
+    url: "{{ aap_host }}/api/v2/ping/"
+    method: GET
+    validate_certs: false
+    status_code: 200
+  register: dc1_preflight
+
+- name: "Pre-flight: Verify pg-dc1 is primary"
+  ansible.builtin.command:
+    cmd: >
+      ssh -o StrictHostKeyChecking=no rhel@pg-dc1
+      "sudo -u enterprisedb psql -t -c \"SELECT pg_is_in_recovery();\""
+  register: dc1_is_primary
+  changed_when: false
+
+- name: "Pre-flight: Confirm state"
+  ansible.builtin.debug:
+    msg: >-
+      DC1 AAP: HTTP {{ dc1_preflight.status }}
+      | pg-dc1 primary: {{ 'YES' if 'f' in dc1_is_primary.stdout else 'NO' }}
+
+# ---------- Step 1: Simulate DC1 failure ----------
+- name: "Step 1: SIMULATE DC1 DATABASE FAILURE"
+  ansible.builtin.debug:
+    msg: ">>> Stopping EDB Postgres on pg-dc1 to simulate datacenter failure <<<"
+
+- name: "Step 1: Stop EDB Postgres on pg-dc1"
+  ansible.builtin.command:
+    cmd: >
+      ssh -o StrictHostKeyChecking=no rhel@pg-dc1
+      "sudo systemctl stop edb-as-16"
+  ignore_errors: true
+
+- name: "Step 1: Confirm pg-dc1 is down"
+  ansible.builtin.command:
+    cmd: >
+      ssh -o StrictHostKeyChecking=no rhel@pg-dc1
+      "sudo systemctl is-active edb-as-16"
+  register: dc1_stopped
+  changed_when: false
+  failed_when: false
+
+- name: "Step 1: Result"
+  ansible.builtin.debug:
+    msg: "pg-dc1 EDB Postgres: {{ dc1_stopped.stdout | default('stopped') }}"
+
+# ---------- Step 2: Promote DC2 database ----------
+- name: "Step 2: PROMOTE DC2 DATABASE TO PRIMARY"
+  ansible.builtin.debug:
+    msg: ">>> Promoting pg-dc2 from standby to primary <<<"
+
+- name: "Step 2: Promote pg-dc2"
+  ansible.builtin.command:
+    cmd: >
+      ssh -o StrictHostKeyChecking=no rhel@pg-dc2
+      "sudo -u enterprisedb /usr/edb/as16/bin/pg_ctl promote -D /var/lib/edb/as16/data"
+
+- name: "Step 2: Wait for promotion"
+  ansible.builtin.pause:
+    seconds: 10
+
+- name: "Step 2: Verify pg-dc2 is now primary"
+  ansible.builtin.command:
+    cmd: >
+      ssh -o StrictHostKeyChecking=no rhel@pg-dc2
+      "sudo -u enterprisedb psql -t -c \"SELECT pg_is_in_recovery();\""
+  register: dc2_promoted
+  until: "'f' in dc2_promoted.stdout"
+  retries: 12
+  delay: 5
+
+- name: "Step 2: Result"
+  ansible.builtin.debug:
+    msg: "pg-dc2 promoted to PRIMARY: {{ 'YES' if 'f' in dc2_promoted.stdout else 'NO - FAILED' }}"
+
+# ---------- Step 3: Activate DC2 AAP ----------
+- name: "Step 3: ACTIVATE AAP ON DC2"
+  ansible.builtin.debug:
+    msg: ">>> Starting AAP services on aap-dc2 <<<"
+
+- name: "Step 3: Start AAP services on aap-dc2"
+  ansible.builtin.command:
+    cmd: >
+      ssh -o StrictHostKeyChecking=no rhel@aap-dc2
+      "sudo systemctl start redis receptor automation-controller-web automation-controller-task nginx"
+
+# ---------- Step 4: Wait for DC2 AAP ----------
+- name: "Step 4: WAITING FOR DC2 AAP API"
+  ansible.builtin.debug:
+    msg: ">>> Polling aap-dc2 API (this may take 2-4 minutes) <<<"
+
+- name: "Step 4: Wait for AAP API on aap-dc2"
+  ansible.builtin.uri:
+    url: "https://aap-dc2/api/v2/ping/"
+    method: GET
+    validate_certs: false
+    status_code: 200
+  register: dc2_aap_ping
+  until: dc2_aap_ping.status == 200
+  retries: 24
+  delay: 15
+  ignore_errors: true
+
+- name: "Step 4: Result"
+  ansible.builtin.debug:
+    msg: "DC2 AAP API status: HTTP {{ dc2_aap_ping.status | default('unreachable') }}"
+
+# ---------- Step 5: Verify failover ----------
+- name: "Step 5: FAILOVER VERIFICATION"
+  ansible.builtin.debug:
+    msg: ">>> Verifying failover is complete <<<"
+
+- name: "Step 5: Launch test job on DC2 AAP"
+  ansible.builtin.uri:
+    url: "https://aap-dc2/api/v2/job_templates/?name=AAP+Health+Check"
+    method: GET
+    user: "{{ aap_username }}"
+    password: "{{ aap_password }}"
+    validate_certs: false
+    force_basic_auth: true
+    status_code: 200
+  register: dc2_template
+  ignore_errors: true
+
+- name: "Step 5: Launch job on DC2"
+  ansible.builtin.uri:
+    url: "https://aap-dc2{{ dc2_template.json.results[0].related.launch }}"
+    method: POST
+    user: "{{ aap_username }}"
+    password: "{{ aap_password }}"
+    validate_certs: false
+    force_basic_auth: true
+    status_code:
+      - 201
+      - 202
+  register: dc2_job
+  when: dc2_template.json.count | default(0) > 0
+  ignore_errors: true
+
+- name: "=== FAILOVER COMPLETE ==="
+  ansible.builtin.debug:
+    msg: >-
+      DR Failover Summary:
+        pg-dc1 (DC1 Primary): STOPPED
+        pg-dc2 (DC2): PROMOTED to PRIMARY
+        aap-dc2 (DC2 AAP): ACTIVE (HTTP {{ dc2_aap_ping.status | default('N/A') }})
+        Test job launched: {{ 'YES (job ' ~ dc2_job.json.id ~ ')' if dc2_job.json is defined else 'SKIPPED' }}

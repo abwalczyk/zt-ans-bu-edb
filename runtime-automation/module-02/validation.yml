@@ -1,0 +1,81 @@
+---
+# Module 02 Validation: Verify EDB replication is healthy.
+
+- name: Set validation results
+  ansible.builtin.set_fact:
+    validation_results: []
+
+- name: Check pg-dc1 is primary
+  ansible.builtin.command:
+    cmd: >
+      ssh -o StrictHostKeyChecking=no rhel@pg-dc1
+      "sudo -u enterprisedb psql -t -c \"SELECT pg_is_in_recovery();\""
+  register: dc1_check
+  changed_when: false
+  ignore_errors: true
+
+- name: Record pg-dc1 primary check
+  ansible.builtin.set_fact:
+    validation_results: "{{ validation_results + [{'check': 'pg-dc1 is PRIMARY', 'status': '[OK]' if 'f' in (dc1_check.stdout | default('')) else '[X]'}] }}"
+
+- name: Check pg-dc2 is standby
+  ansible.builtin.command:
+    cmd: >
+      ssh -o StrictHostKeyChecking=no rhel@pg-dc2
+      "sudo -u enterprisedb psql -t -c \"SELECT pg_is_in_recovery();\""
+  register: dc2_check
+  changed_when: false
+  ignore_errors: true
+
+- name: Record pg-dc2 standby check
+  ansible.builtin.set_fact:
+    validation_results: "{{ validation_results + [{'check': 'pg-dc2 is STANDBY', 'status': '[OK]' if 't' in (dc2_check.stdout | default('')) else '[X]'}] }}"
+
+- name: Check replication is active
+  ansible.builtin.command:
+    cmd: >
+      ssh -o StrictHostKeyChecking=no rhel@pg-dc1
+      "sudo -u enterprisedb psql -t -c \"SELECT count(*) FROM pg_stat_replication WHERE state='streaming';\""
+  register: repl_count
+  changed_when: false
+  ignore_errors: true
+
+- name: Record replication check
+  ansible.builtin.set_fact:
+    validation_results: "{{ validation_results + [{'check': 'Streaming replication active', 'status': '[OK]' if (repl_count.stdout | default('0') | trim | int) > 0 else '[X]'}] }}"
+
+- name: Check AAP databases exist
+  ansible.builtin.command:
+    cmd: >
+      ssh -o StrictHostKeyChecking=no rhel@pg-dc1
+      "sudo -u enterprisedb psql -t -c \"SELECT count(*) FROM pg_database WHERE datname IN ('awx','automationhub','automationedacontroller','automationgateway');\""
+  register: db_count
+  changed_when: false
+  ignore_errors: true
+
+- name: Record database check
+  ansible.builtin.set_fact:
+    validation_results: "{{ validation_results + [{'check': 'All 4 AAP databases exist', 'status': '[OK]' if (db_count.stdout | default('0') | trim | int) == 4 else '[X]'}] }}"
+
+- name: Check test table replicated
+  ansible.builtin.command:
+    cmd: >
+      ssh -o StrictHostKeyChecking=no rhel@pg-dc2
+      "sudo -u enterprisedb psql -d awx -t -c \"SELECT count(*) FROM dr_test;\" 2>/dev/null"
+  register: test_table
+  changed_when: false
+  ignore_errors: true
+
+- name: Record replication data check
+  ansible.builtin.set_fact:
+    validation_results: "{{ validation_results + [{'check': 'Test data replicated to DC2', 'status': '[OK]' if (test_table.stdout | default('0') | trim | int) > 0 else '[X]'}] }}"
+
+- name: Show validation results
+  ansible.builtin.debug:
+    msg: "{{ item.status }} {{ item.check }}"
+  loop: "{{ validation_results }}"
+
+- name: Check for failures
+  ansible.builtin.fail:
+    msg: "Validation failed -- see results above"
+  when: validation_results | selectattr('status', 'equalto', '[X]') | list | length > 0

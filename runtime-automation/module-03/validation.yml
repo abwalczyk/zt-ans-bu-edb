@@ -1,0 +1,71 @@
+---
+# Module 03 Validation: Verify AAP is using external EDB Postgres correctly.
+
+- name: Set validation results
+  ansible.builtin.set_fact:
+    validation_results: []
+
+- name: Check AAP API responds
+  ansible.builtin.uri:
+    url: "{{ aap_host }}/api/v2/ping/"
+    method: GET
+    validate_certs: false
+    status_code: 200
+  register: aap_ping
+  ignore_errors: true
+
+- name: Record AAP API check
+  ansible.builtin.set_fact:
+    validation_results: "{{ validation_results + [{'check': 'AAP API responds (HTTP 200)', 'status': '[OK]' if aap_ping.status | default(0) == 200 else '[X]'}] }}"
+
+- name: Check for successful jobs
+  ansible.builtin.uri:
+    url: "{{ aap_host }}/api/v2/jobs/?status=successful&page_size=1"
+    method: GET
+    user: "{{ aap_username }}"
+    password: "{{ aap_password }}"
+    validate_certs: false
+    force_basic_auth: true
+    status_code: 200
+  register: successful_jobs
+  ignore_errors: true
+
+- name: Record job check
+  ansible.builtin.set_fact:
+    validation_results: "{{ validation_results + [{'check': 'At least one successful job exists', 'status': '[OK]' if (successful_jobs.json.count | default(0)) > 0 else '[X]'}] }}"
+
+- name: Check job data in EDB Postgres
+  ansible.builtin.command:
+    cmd: >
+      ssh -o StrictHostKeyChecking=no rhel@pg-dc1
+      "sudo -u enterprisedb psql -d awx -t -c \"SELECT count(*) FROM main_job;\""
+  register: pg_jobs
+  changed_when: false
+  ignore_errors: true
+
+- name: Record database check
+  ansible.builtin.set_fact:
+    validation_results: "{{ validation_results + [{'check': 'Job data stored in EDB Postgres', 'status': '[OK]' if (pg_jobs.stdout | default('0') | trim | int) > 0 else '[X]'}] }}"
+
+- name: Check data replicated to DC2
+  ansible.builtin.command:
+    cmd: >
+      ssh -o StrictHostKeyChecking=no rhel@pg-dc2
+      "sudo -u enterprisedb psql -d awx -t -c \"SELECT count(*) FROM main_job;\""
+  register: dc2_jobs
+  changed_when: false
+  ignore_errors: true
+
+- name: Record replication check
+  ansible.builtin.set_fact:
+    validation_results: "{{ validation_results + [{'check': 'Job data replicated to DC2', 'status': '[OK]' if (dc2_jobs.stdout | default('0') | trim | int) > 0 else '[X]'}] }}"
+
+- name: Show validation results
+  ansible.builtin.debug:
+    msg: "{{ item.status }} {{ item.check }}"
+  loop: "{{ validation_results }}"
+
+- name: Check for failures
+  ansible.builtin.fail:
+    msg: "Validation failed -- see results above"
+  when: validation_results | selectattr('status', 'equalto', '[X]') | list | length > 0
