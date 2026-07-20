@@ -33,13 +33,7 @@ fi
 # ---------- 2. Install EDB Postgres Advanced Server 16 ----------
 echo "--- Installing EDB Postgres Advanced Server 16 ---"
 
-# Add EDB repository (requires EDB_REPO_TOKEN or pre-configured repo)
-if [ -n "${EDB_REPO_TOKEN:-}" ]; then
-  curl -1sSLf "https://downloads.enterprisedb.com/${EDB_REPO_TOKEN}/enterprise/setup.rpm.sh" | bash
-else
-  echo "WARNING: EDB_REPO_TOKEN not set. Assuming EDB repo is pre-configured."
-fi
-
+retry dnf install -y https://yum.enterprisedb.com/edb-repo-rpms/edb-repo-latest.noarch.rpm
 retry dnf -y install edb-as16-server edb-as16-contrib
 
 # ---------- 3. Initialize database cluster ----------
