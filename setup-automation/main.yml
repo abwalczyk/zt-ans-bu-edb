@@ -10,6 +10,13 @@
     ansible.builtin.include_vars:
       file: "{{ playbook_dir }}/../config/setup_targets.yaml"
 
+  - name: Verify setup_hosts loaded
+    ansible.builtin.assert:
+      that:
+        - setup_hosts is defined
+        - setup_hosts | length > 0
+      fail_msg: "setup_hosts not loaded from config/setup_targets.yaml (playbook_dir={{ playbook_dir }})"
+
   - name: Add bastion host
     ansible.builtin.add_host:
       name: "{{ lookup('ansible.builtin.env', 'BASTION_HOST') }}"
@@ -100,7 +107,7 @@
   - name: Write script result to file
     ansible.builtin.copy:
       content: "{{ r_result.stdout | default(r_result.stderr) | default(r_result) }}"
-      dest: "/tmp/{{ ansible_host }}-setup-script.out"
+      dest: "/tmp/{{ inventory_hostname }}-setup-script.out"
     delegate_to: localhost
     when:
     - r_result is defined

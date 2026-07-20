@@ -17,7 +17,7 @@ virtualmachines:
       password: ansible123!
       chpasswd: { expire: False }
       runcmd:
-        - sed -i "s/PasswordAuthentication no/PasswordAuthentication yes/" /etc/ssh/sshd_config
+        - echo "PasswordAuthentication yes" > /etc/ssh/sshd_config.d/50-cloud-init.conf
         - systemctl reload sshd
     services:
       - name: control-https
@@ -127,7 +127,7 @@ virtualmachines:
       password: ansible123!
       chpasswd: { expire: False }
       runcmd:
-        - sed -i "s/PasswordAuthentication no/PasswordAuthentication yes/" /etc/ssh/sshd_config
+        - echo "PasswordAuthentication yes" > /etc/ssh/sshd_config.d/50-cloud-init.conf
         - systemctl reload sshd
 
   - name: "pg-dc2"
@@ -153,7 +153,7 @@ virtualmachines:
       password: ansible123!
       chpasswd: { expire: False }
       runcmd:
-        - sed -i "s/PasswordAuthentication no/PasswordAuthentication yes/" /etc/ssh/sshd_config
+        - echo "PasswordAuthentication yes" > /etc/ssh/sshd_config.d/50-cloud-init.conf
         - systemctl reload sshd
 
   - name: "aap-dc2"
@@ -172,7 +172,7 @@ virtualmachines:
       password: ansible123!
       chpasswd: { expire: False }
       runcmd:
-        - sed -i "s/PasswordAuthentication no/PasswordAuthentication yes/" /etc/ssh/sshd_config
+        - echo "PasswordAuthentication yes" > /etc/ssh/sshd_config.d/50-cloud-init.conf
         - systemctl reload sshd
     services:
       - name: aap-dc2-https

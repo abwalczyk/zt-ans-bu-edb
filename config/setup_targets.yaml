@@ -1,3 +1,4 @@
+---
 # Host short names that receive setup-<name>.sh during setup-automation.
 # Names must match SSH inventory names and filenames (e.g. setup-pg-dc1.sh).
 setup_hosts:
