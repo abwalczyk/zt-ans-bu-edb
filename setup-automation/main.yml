@@ -10,6 +10,10 @@
     ansible.builtin.include_vars:
       file: "{{ playbook_dir }}/../config/setup_targets.yaml"
 
+  - name: Load secrets
+    ansible.builtin.include_vars:
+      file: "{{ playbook_dir }}/../config/secrets.yaml"
+
   - name: Verify setup_hosts loaded
     ansible.builtin.assert:
       that:
@@ -57,6 +61,7 @@
     satellite_activationkey: "{{ lookup('ansible.builtin.env', 'SATELLITE_ACTIVATIONKEY') }}"
     guid: "{{ lookup('ansible.builtin.env', 'GUID') }}"
     domain: "{{ lookup('ansible.builtin.env', 'DOMAIN') }}"
+    edb_subscription_token: "{{ hostvars['localhost']['edb_subscription_token'] }}"
   tasks:
   - name: "waiting for the port tcp/22 to be open"
     ansible.builtin.wait_for_connection:
@@ -98,6 +103,7 @@
       SATELLITE_ACTIVATIONKEY: "{{ satellite_activationkey }}"
       GUID: "{{ guid }}"
       DOMAIN: "{{ domain }}"
+      EDB_SUBSCRIPTION_TOKEN: "{{ edb_subscription_token }}"
 
   - name: Output script result
     ansible.builtin.debug:

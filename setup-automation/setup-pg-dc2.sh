@@ -33,7 +33,13 @@ fi
 # ---------- 2. Install EDB Postgres Advanced Server 16 ----------
 echo "--- Installing EDB Postgres Advanced Server 16 ---"
 
-retry dnf install -y https://yum.enterprisedb.com/edb-repo-rpms/edb-repo-latest.noarch.rpm
+EDB_TOKEN="${EDB_SUBSCRIPTION_TOKEN:-${EDB_REPO_TOKEN:-}}"
+if [ -z "${EDB_TOKEN}" ]; then
+  echo "ERROR: EDB_SUBSCRIPTION_TOKEN (or EDB_REPO_TOKEN) must be set"
+  exit 1
+fi
+curl -1sSLf "https://downloads.enterprisedb.com/${EDB_TOKEN}/enterprise/setup.rpm.sh" | bash
+
 retry dnf -y install edb-as16-server edb-as16-contrib
 
 # ---------- 3. Wait for pg-dc1 to be ready ----------
