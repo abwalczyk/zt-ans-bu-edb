@@ -23,7 +23,9 @@ retry() {
 # ---------- 1. Register with Satellite ----------
 echo "--- Registering with Red Hat Satellite ---"
 if [ -n "${SATELLITE_URL:-}" ]; then
-  retry rpm -Uvh "${SATELLITE_URL}/pub/katello-ca-consumer-latest.noarch.rpm" || true
+  SAT="${SATELLITE_URL#https://}"
+  SAT="${SAT#http://}"
+  retry rpm -Uvh "https://${SAT}/pub/katello-ca-consumer-latest.noarch.rpm" || true
   retry subscription-manager register \
     --org="${SATELLITE_ORG}" \
     --activationkey="${SATELLITE_ACTIVATIONKEY}" \
@@ -32,7 +34,8 @@ fi
 
 # ---------- 2. Basic setup ----------
 echo "--- Installing prerequisites ---"
-retry dnf -y install jq curl
+dnf config-manager --set-disabled '*rhui*' 2>/dev/null || true
+retry dnf -y install jq curl || echo "WARNING: Could not install jq/curl (may already be present)"
 
 echo "--- Granting rhel passwordless sudo ---"
 echo "rhel ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/rhel

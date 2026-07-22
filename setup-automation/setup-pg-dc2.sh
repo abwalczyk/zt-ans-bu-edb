@@ -23,7 +23,9 @@ retry() {
 # ---------- 1. Register with Satellite ----------
 echo "--- Registering with Red Hat Satellite ---"
 if [ -n "${SATELLITE_URL:-}" ]; then
-  retry rpm -Uvh "${SATELLITE_URL}/pub/katello-ca-consumer-latest.noarch.rpm" || true
+  SAT="${SATELLITE_URL#https://}"
+  SAT="${SAT#http://}"
+  retry rpm -Uvh "https://${SAT}/pub/katello-ca-consumer-latest.noarch.rpm" || true
   retry subscription-manager register \
     --org="${SATELLITE_ORG}" \
     --activationkey="${SATELLITE_ACTIVATIONKEY}" \
@@ -40,7 +42,7 @@ if [ -z "${EDB_TOKEN}" ]; then
 fi
 curl -1sSLf "https://downloads.enterprisedb.com/${EDB_TOKEN}/enterprise/setup.rpm.sh" | bash
 
-retry dnf -y install edb-as16-server edb-as16-contrib
+retry dnf -y install edb-as16-server
 
 # ---------- 3. Wait for pg-dc1 to be ready ----------
 echo "--- Waiting for pg-dc1 primary to accept connections ---"

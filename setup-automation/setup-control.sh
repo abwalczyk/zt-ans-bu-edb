@@ -37,6 +37,7 @@ subscription-manager status >/dev/null 2>&1 || \
     --activationkey="${SATELLITE_ACTIVATIONKEY}" \
     --force
 
+dnf config-manager --set-disabled '*rhui*' 2>/dev/null || true
 dnf config-manager --set-enabled rhel-9-baseos-rpms rhel-9-appstream-rpms 2>/dev/null || true
 
 # ---------- 2. Install prerequisites ----------
