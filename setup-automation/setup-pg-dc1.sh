@@ -4,10 +4,16 @@ set -euo pipefail
 echo "=== Setting up pg-dc1: EDB Postgres Advanced Server 16 (PRIMARY) ==="
 
 # EDB clients default to 5444; this lab standardizes on 5432 (AAP / firewall / routes).
+# Default DB for user enterprisedb is "edb" (not "enterprisedb" / "postgres").
 export PGPORT=5432
+export PGDATABASE=edb
 PG_BIN="/usr/edb/as16/bin"
-psql_edb() { sudo -u enterprisedb env PGPORT="${PGPORT}" "${PG_BIN}/psql" "$@"; }
-createdb_edb() { sudo -u enterprisedb env PGPORT="${PGPORT}" "${PG_BIN}/createdb" "$@"; }
+psql_edb() {
+  sudo -u enterprisedb env PGPORT="${PGPORT}" PGDATABASE="${PGDATABASE}" "${PG_BIN}/psql" "$@"
+}
+createdb_edb() {
+  sudo -u enterprisedb env PGPORT="${PGPORT}" PGDATABASE="${PGDATABASE}" "${PG_BIN}/createdb" "$@"
+}
 
 # ---------- Helper ----------
 retry() {
