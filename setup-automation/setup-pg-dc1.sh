@@ -3,6 +3,12 @@ set -euo pipefail
 
 echo "=== Setting up pg-dc1: EDB Postgres Advanced Server 16 (PRIMARY) ==="
 
+# EDB clients default to 5444; this lab standardizes on 5432 (AAP / firewall / routes).
+export PGPORT=5432
+PG_BIN="/usr/edb/as16/bin"
+psql_edb() { sudo -u enterprisedb env PGPORT="${PGPORT}" "${PG_BIN}/psql" "$@"; }
+createdb_edb() { sudo -u enterprisedb env PGPORT="${PGPORT}" "${PG_BIN}/createdb" "$@"; }
+
 # ---------- Helper ----------
 retry() {
   local n=1 max=3 delay=5
@@ -81,11 +87,16 @@ fi
 
 # ---------- 4. Configure as PRIMARY ----------
 echo "--- Configuring postgresql.conf for primary role ---"
+# Replace EDB default port 5444 if present; also append lab settings.
+sed -i -E 's/^#?port\s*=.*/port = 5432/' "${PGDATA}/postgresql.conf"
+if ! grep -qE '^port\s*=\s*5432' "${PGDATA}/postgresql.conf"; then
+  echo "port = 5432" >> "${PGDATA}/postgresql.conf"
+fi
+
 cat >> "${PGDATA}/postgresql.conf" <<'PGCONF'
 
 # --- EDB HA Demo: Primary configuration ---
 listen_addresses = '*'
-port = 5432
 max_connections = 500
 shared_buffers = 2GB
 effective_cache_size = 4GB
@@ -125,19 +136,35 @@ PGHBA
 
 # ---------- 6. Start EDB Postgres ----------
 echo "--- Starting EDB Postgres ---"
-systemctl start edb-as-16
 systemctl enable edb-as-16
+systemctl restart edb-as-16
 
-sleep 5
+echo "--- Waiting for Postgres on port ${PGPORT} ---"
+READY_WAIT=60
+READY_ELAPSED=0
+while [ $READY_ELAPSED -lt $READY_WAIT ]; do
+  if "${PG_BIN}/pg_isready" -h localhost -p "${PGPORT}" -U enterprisedb >/dev/null 2>&1; then
+    echo "Postgres is ready on port ${PGPORT}"
+    break
+  fi
+  sleep 2
+  READY_ELAPSED=$((READY_ELAPSED + 2))
+done
+if [ $READY_ELAPSED -ge $READY_WAIT ]; then
+  echo "ERROR: Postgres did not become ready on port ${PGPORT}"
+  systemctl status edb-as-16 --no-pager || true
+  ss -lntp | grep -E '5432|5444' || true
+  exit 1
+fi
 
 # ---------- 7. Create replication user ----------
 echo "--- Creating replication user ---"
-sudo -u enterprisedb psql -c "CREATE ROLE replicator REPLICATION LOGIN PASSWORD 'ReplicatorPass2026!';" 2>/dev/null || \
+psql_edb -c "CREATE ROLE replicator REPLICATION LOGIN PASSWORD 'ReplicatorPass2026!';" 2>/dev/null || \
   echo "Role replicator may already exist."
 
 # ---------- 8. Create replication slot for pg-dc2 ----------
 echo "--- Creating replication slot ---"
-sudo -u enterprisedb psql -c "SELECT pg_create_physical_replication_slot('pg_dc2_slot');" 2>/dev/null || \
+psql_edb -c "SELECT pg_create_physical_replication_slot('pg_dc2_slot');" 2>/dev/null || \
   echo "Replication slot may already exist."
 
 # ---------- 9. Bootstrap AAP databases ----------
@@ -145,10 +172,10 @@ echo "--- Creating AAP databases ---"
 BOOTSTRAP_SQL="/tmp/setup-scripts/create-aap-databases.sql"
 
 if [ -f "${BOOTSTRAP_SQL}" ]; then
-  sudo -u enterprisedb psql -f "${BOOTSTRAP_SQL}"
+  psql_edb -f "${BOOTSTRAP_SQL}"
 else
   # Inline fallback
-  sudo -u enterprisedb psql <<'SQL'
+  psql_edb <<'SQL'
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'aap') THEN
@@ -158,15 +185,15 @@ END
 $$;
 SQL
   for db in awx automationhub automationedacontroller automationgateway; do
-    sudo -u enterprisedb psql -tc "SELECT 1 FROM pg_database WHERE datname='${db}';" | grep -q 1 || \
-      sudo -u enterprisedb createdb -O aap "${db}"
+    psql_edb -tc "SELECT 1 FROM pg_database WHERE datname='${db}';" | grep -q 1 || \
+      createdb_edb -O aap "${db}"
   done
-  sudo -u enterprisedb psql -d automationhub -c "CREATE EXTENSION IF NOT EXISTS hstore;"
+  psql_edb -d automationhub -c "CREATE EXTENSION IF NOT EXISTS hstore;"
 fi
 
 # ---------- 10. Verify ----------
 echo "--- Verifying primary setup ---"
-sudo -u enterprisedb psql -c "SELECT pg_is_in_recovery();"
-sudo -u enterprisedb psql -c "\l" | grep -E "awx|automationhub|automationeda|automationgateway"
+psql_edb -c "SELECT pg_is_in_recovery();"
+psql_edb -c "\l" | grep -E "awx|automationhub|automationeda|automationgateway"
 
-echo "=== pg-dc1 setup complete: EDB Postgres PRIMARY ready ==="
+echo "=== pg-dc1 setup complete: EDB Postgres PRIMARY ready on port ${PGPORT} ==="

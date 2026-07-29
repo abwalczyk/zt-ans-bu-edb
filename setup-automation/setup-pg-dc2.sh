@@ -3,6 +3,11 @@ set -euo pipefail
 
 echo "=== Setting up pg-dc2: EDB Postgres Advanced Server 16 (STANDBY) ==="
 
+# EDB clients default to 5444; this lab standardizes on 5432.
+export PGPORT=5432
+PG_BIN="/usr/edb/as16/bin"
+psql_edb() { sudo -u enterprisedb env PGPORT="${PGPORT}" "${PG_BIN}/psql" "$@"; }
+
 # ---------- Helper ----------
 retry() {
   local n=1 max=3 delay=5
@@ -97,8 +102,9 @@ if [ -d "${PGDATA}" ]; then
 fi
 
 sudo -u enterprisedb PGPASSWORD="ReplicatorPass2026!" \
-  /usr/edb/as16/bin/pg_basebackup \
+  "${PG_BIN}/pg_basebackup" \
     -h pg-dc1 \
+    -p "${PGPORT}" \
     -U replicator \
     -D "${PGDATA}" \
     -P -Xs -R \
@@ -124,14 +130,34 @@ AUTOCONF
 
 # ---------- 6. Start EDB Postgres as standby ----------
 echo "--- Starting EDB Postgres (standby mode) ---"
-systemctl start edb-as-16
-systemctl enable edb-as-16
+# Ensure standby also listens on 5432 (basebackup may retain primary settings, but be explicit)
+if [ -f "${PGDATA}/postgresql.conf" ]; then
+  sed -i -E 's/^#?port\s*=.*/port = 5432/' "${PGDATA}/postgresql.conf"
+fi
 
-sleep 5
+systemctl enable edb-as-16
+systemctl restart edb-as-16
+
+echo "--- Waiting for standby on port ${PGPORT} ---"
+READY_WAIT=60
+READY_ELAPSED=0
+while [ $READY_ELAPSED -lt $READY_WAIT ]; do
+  if "${PG_BIN}/pg_isready" -h localhost -p "${PGPORT}" -U enterprisedb >/dev/null 2>&1; then
+    echo "Standby is ready on port ${PGPORT}"
+    break
+  fi
+  sleep 2
+  READY_ELAPSED=$((READY_ELAPSED + 2))
+done
+if [ $READY_ELAPSED -ge $READY_WAIT ]; then
+  echo "ERROR: Standby did not become ready on port ${PGPORT}"
+  systemctl status edb-as-16 --no-pager || true
+  exit 1
+fi
 
 # ---------- 7. Verify replication ----------
 echo "--- Verifying standby status ---"
-IS_STANDBY=$(sudo -u enterprisedb psql -t -c "SELECT pg_is_in_recovery();" | tr -d '[:space:]')
+IS_STANDBY=$(psql_edb -t -c "SELECT pg_is_in_recovery();" | tr -d '[:space:]')
 if [ "${IS_STANDBY}" = "t" ]; then
   echo "OK: pg-dc2 is in recovery mode (standby)"
 else
@@ -139,6 +165,6 @@ else
 fi
 
 echo "--- Checking replication lag ---"
-sudo -u enterprisedb psql -c "SELECT CASE WHEN pg_last_wal_receive_lsn() IS NOT NULL THEN 'Receiving WAL from primary' ELSE 'NOT receiving WAL' END AS replication_status;"
+psql_edb -c "SELECT CASE WHEN pg_last_wal_receive_lsn() IS NOT NULL THEN 'Receiving WAL from primary' ELSE 'NOT receiving WAL' END AS replication_status;"
 
-echo "=== pg-dc2 setup complete: EDB Postgres STANDBY replicating from pg-dc1 ==="
+echo "=== pg-dc2 setup complete: EDB Postgres STANDBY replicating from pg-dc1 on port ${PGPORT} ==="
