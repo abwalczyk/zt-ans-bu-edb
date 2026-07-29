@@ -21,14 +21,19 @@ retry() {
 
 # ---------- 1. Register with Satellite ----------
 echo "--- Registering with Red Hat Satellite ---"
+SAT="${SATELLITE_URL#https://}"
+SAT="${SAT#http://}"
+
 retry subscription-manager clean || true
-retry curl -k -L "https://${SATELLITE_URL}/pub/katello-server-ca.crt" \
-  -o "/etc/pki/ca-trust/source/anchors/${SATELLITE_URL}.ca.crt"
+retry curl -k -L "https://${SAT}/pub/katello-server-ca.crt" \
+  -o "/etc/pki/ca-trust/source/anchors/${SAT}.ca.crt"
 update-ca-trust
 
 KATELLO_INSTALLED=$(rpm -qa | grep -c katello || true)
 if [ "$KATELLO_INSTALLED" -eq 0 ]; then
-  retry rpm -Uhv "https://${SATELLITE_URL}/pub/katello-ca-consumer-latest.noarch.rpm"
+  retry curl -k -L -o /tmp/katello-ca-consumer-latest.noarch.rpm \
+    "https://${SAT}/pub/katello-ca-consumer-latest.noarch.rpm"
+  rpm -Uvh /tmp/katello-ca-consumer-latest.noarch.rpm
 fi
 
 subscription-manager status >/dev/null 2>&1 || \
@@ -37,8 +42,18 @@ subscription-manager status >/dev/null 2>&1 || \
     --activationkey="${SATELLITE_ACTIVATIONKEY}" \
     --force
 
+if [ -f /etc/dnf/plugins/amazon-id.conf ]; then
+  sed -i 's/^enabled=.*/enabled=0/' /etc/dnf/plugins/amazon-id.conf || true
+fi
 dnf config-manager --set-disabled '*rhui*' 2>/dev/null || true
-dnf config-manager --set-enabled rhel-9-baseos-rpms rhel-9-appstream-rpms 2>/dev/null || true
+
+subscription-manager repos --enable=rhel-9-for-x86_64-baseos-rpms \
+  --enable=rhel-9-for-x86_64-appstream-rpms 2>/dev/null || \
+  dnf config-manager --set-enabled \
+    rhel-9-for-x86_64-baseos-rpms \
+    rhel-9-for-x86_64-appstream-rpms \
+    rhel-9-baseos-rpms \
+    rhel-9-appstream-rpms 2>/dev/null || true
 
 # ---------- 2. Install prerequisites ----------
 echo "--- Installing prerequisites ---"
@@ -50,7 +65,7 @@ chmod 440 /etc/sudoers.d/rhel_sudoers
 
 # ---------- 3. Wait for pg-dc1 database ----------
 echo "--- Waiting for pg-dc1 database ---"
-MAX_WAIT=180
+MAX_WAIT=600
 ELAPSED=0
 while [ $ELAPSED -lt $MAX_WAIT ]; do
   if timeout 5 bash -c "echo > /dev/tcp/pg-dc1/5432" 2>/dev/null; then
@@ -61,6 +76,11 @@ while [ $ELAPSED -lt $MAX_WAIT ]; do
   sleep 10
   ELAPSED=$((ELAPSED + 10))
 done
+
+if [ $ELAPSED -ge $MAX_WAIT ]; then
+  echo "ERROR: pg-dc1:5432 not reachable after ${MAX_WAIT}s"
+  exit 1
+fi
 
 # ---------- 4. Configure AAP to use pg-dc1 as external database ----------
 echo "--- Configuring AAP to use pg-dc1 as external database ---"

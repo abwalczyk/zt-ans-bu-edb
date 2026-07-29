@@ -4,10 +4,15 @@ set -euo pipefail
 echo "=== Setting up vscode: VS Code IDE with EDB demo tools ==="
 
 # ---------- 1. Register with Satellite ----------
-curl -k -L "https://${SATELLITE_URL}/pub/katello-server-ca.crt" \
-  -o "/etc/pki/ca-trust/source/anchors/${SATELLITE_URL}.ca.crt"
+SAT="${SATELLITE_URL#https://}"
+SAT="${SAT#http://}"
+
+curl -k -L "https://${SAT}/pub/katello-server-ca.crt" \
+  -o "/etc/pki/ca-trust/source/anchors/${SAT}.ca.crt"
 update-ca-trust
-rpm -Uhv "https://${SATELLITE_URL}/pub/katello-ca-consumer-latest.noarch.rpm" || true
+curl -k -L -o /tmp/katello-ca-consumer-latest.noarch.rpm \
+  "https://${SAT}/pub/katello-ca-consumer-latest.noarch.rpm"
+rpm -Uvh /tmp/katello-ca-consumer-latest.noarch.rpm || true
 
 tee /etc/profile.d/domain_guid.sh <<EOF
 export DOMAIN="${DOMAIN}"
@@ -20,6 +25,13 @@ subscription-manager status >/dev/null 2>&1 || \
     --org="${SATELLITE_ORG}" \
     --activationkey="${SATELLITE_ACTIVATIONKEY}" \
     --force
+
+if [ -f /etc/dnf/plugins/amazon-id.conf ]; then
+  sed -i 's/^enabled=.*/enabled=0/' /etc/dnf/plugins/amazon-id.conf || true
+fi
+dnf config-manager --set-disabled '*rhui*' 2>/dev/null || true
+subscription-manager repos --enable=rhel-9-for-x86_64-baseos-rpms \
+  --enable=rhel-9-for-x86_64-appstream-rpms 2>/dev/null || true
 
 setenforce 0
 

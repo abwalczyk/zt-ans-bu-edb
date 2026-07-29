@@ -25,11 +25,37 @@ echo "--- Registering with Red Hat Satellite ---"
 if [ -n "${SATELLITE_URL:-}" ]; then
   SAT="${SATELLITE_URL#https://}"
   SAT="${SAT#http://}"
-  retry rpm -Uvh "https://${SAT}/pub/katello-ca-consumer-latest.noarch.rpm" || true
-  retry subscription-manager register \
-    --org="${SATELLITE_ORG}" \
-    --activationkey="${SATELLITE_ACTIVATIONKEY}" \
-    --force || true
+
+  # Trust Satellite CA first (cluster uses a private/self-signed chain)
+  retry curl -k -L "https://${SAT}/pub/katello-server-ca.crt" \
+    -o "/etc/pki/ca-trust/source/anchors/${SAT}.ca.crt"
+  update-ca-trust
+
+  # Download consumer RPM with -k, then install locally (avoids rpm→curl TLS failures)
+  retry curl -k -L -o /tmp/katello-ca-consumer-latest.noarch.rpm \
+    "https://${SAT}/pub/katello-ca-consumer-latest.noarch.rpm"
+  rpm -Uvh /tmp/katello-ca-consumer-latest.noarch.rpm || true
+
+  subscription-manager status >/dev/null 2>&1 || \
+    retry subscription-manager register \
+      --org="${SATELLITE_ORG}" \
+      --activationkey="${SATELLITE_ACTIVATIONKEY}" \
+      --force
+
+  # AWS/RHUI images: amazon-id plugin breaks dnf when not on EC2 metadata
+  if [ -f /etc/dnf/plugins/amazon-id.conf ]; then
+    sed -i 's/^enabled=.*/enabled=0/' /etc/dnf/plugins/amazon-id.conf || true
+  fi
+  dnf config-manager --set-disabled '*rhui*' 2>/dev/null || true
+
+  # Enable RHEL content so EDB deps (lz4, etc.) resolve
+  subscription-manager repos --enable=rhel-9-for-x86_64-baseos-rpms \
+    --enable=rhel-9-for-x86_64-appstream-rpms 2>/dev/null || \
+    dnf config-manager --set-enabled \
+      rhel-9-for-x86_64-baseos-rpms \
+      rhel-9-for-x86_64-appstream-rpms \
+      rhel-9-baseos-rpms \
+      rhel-9-appstream-rpms 2>/dev/null || true
 fi
 
 # ---------- 2. Install EDB Postgres Advanced Server 16 ----------
@@ -42,6 +68,7 @@ if [ -z "${EDB_TOKEN}" ]; then
 fi
 curl -1sSLf "https://downloads.enterprisedb.com/${EDB_TOKEN}/enterprise/setup.rpm.sh" | bash
 
+retry dnf -y install lz4
 retry dnf -y install edb-as16-server
 
 # ---------- 3. Initialize database cluster ----------
